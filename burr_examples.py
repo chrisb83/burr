@@ -127,8 +127,8 @@ EXAMPLES = [
     dict(func="cdf", arg=1e3, c=3.0, d=1e4,
          title="cdf near 1 with large d: power form loses d ulp",
          why="(1 + x**-c)**-d: the rounding error of 1 + x**-c (up to 1/2 ulp) is\n"
-             "multiplied by d = 1e4. The initial version always uses this form;\n"
-             "the new one uses exp(logcdf) for x > 1, where |logcdf| <= d*log(2)\n"
+             "multiplied by d = 1e4. The initial version and \n"
+             "the new one use exp(logcdf) for x > 1, where |logcdf| <= d*log(2)\n"
              "and here |logcdf| = 1e-5, so the error stays at about 1 ulp."),
     dict(func="logsf", arg=1e-20, c=2.0, d=3.0,
          title="logsf in the left tail: exp(logcdf) vs the power form",
