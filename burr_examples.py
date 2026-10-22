@@ -21,6 +21,7 @@ import scipy.special as sc
 from scipy import stats
 from scipy.stats._continuous_distns import burr_gen as _scipy_burr_gen
 import scipy._external.array_api_extra as xpx
+import scipy.special._ufuncs as scu
 
 from burr_new import burr as burr_new
 from burr_benchmark import ref_x, ref_q
@@ -30,52 +31,43 @@ EPS = np.finfo(float).eps
 
 # ------------------------------------------------- the initial proposal (verbatim)
 
-def _log1p_pow(x, c):
-    # log1p(x**c), as c*log(x) + log1p(x**-c) where x**c > 1 so that
-    # x**c cannot overflow
-    return xpx.apply_where(
-        c * np.log(x) > 0, (x, c),
-        lambda x, c: c * np.log(x) + sc.log1p(x**-c),
-        lambda x, c: sc.log1p(x**c))
-
-
-def _log1mexp(x):
-    # log(1 - exp(x)) for x < 0
-    return xpx.apply_where(
-        x < -np.log(2), x,
-        lambda x: np.log1p(-np.exp(x)),
-        lambda x: np.log(-np.expm1(x)))
-
-
 def _log_expm1(y):
     # log(expm1(y)) for y > 0, finite where expm1(y) overflows
-    return y + _log1mexp(-y)
-
+    return y + scu._log1mexp(-y)
 
 class burr_initial_gen(_scipy_burr_gen):
     # _pdf, _logpdf and _isf are inherited unchanged from SciPy
 
     def _cdf(self, x, c, d):
-        # x**-c overflows to inf for small x, where the log form holds
-        with np.errstate(over='ignore'):
-            cdf = (1 + x**(-c))**(-d)
-        return np.where(cdf == 0, np.exp(self._logcdf(x, c, d)), cdf)
+        def power(x, c, d):
+            # x**-c overflows to inf for small x, where the log form holds
+            with np.errstate(over='ignore'):
+                cdf = (1 + x**(-c))**(-d)
+            return np.where(cdf == 0, np.exp(self._logcdf(x, c, d)), cdf)
+
+        # the power form loses about d ulp for x >= 1, in rounding 1 + x**-c
+        return xpx.apply_where(
+            x < 1, (x, c, d), power,
+            lambda x, c, d: np.exp(self._logcdf(x, c, d)))
 
     def _logcdf(self, x, c, d):
-        return -d * _log1p_pow(x, -c)
+        # log1p(x**c) - c*log(x) is log1p(x**-c) without overflow for x < 1
+        return -d * xpx.apply_where(
+            x < 1, (x, c),
+            lambda x, c: sc.log1p(x**c) - c * np.log(x),
+            lambda x, c: sc.log1p(x**-c))
 
     def _sf(self, x, c, d):
         return -sc.expm1(self._logcdf(x, c, d))
 
     def _logsf(self, x, c, d):
-        return _log1mexp(self._logcdf(x, c, d))
+        return scu._log1mexp(self._logcdf(x, c, d))
 
     def _ppf(self, q, c, d):
         # q**(-1/d) overflows to inf for small q, where the log form holds
         with np.errstate(over='ignore'):
             ppf = (q**(-1.0/d) - 1)**(-1.0/c)
         return np.where(ppf == 0, np.exp(-_log_expm1(-np.log(q) / d) / c), ppf)
-
 
 burr_initial = burr_initial_gen(a=0.0, name='burr')
 
